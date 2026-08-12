@@ -3,7 +3,7 @@ namespace DeltaZulu.Forward;
 /// <summary>
 /// The payload of a <see cref="ForwardFrameType.TypedBatch" /> or
 /// <see cref="ForwardFrameType.RawEnvelope" /> frame: a batch UUID (the unit of
-/// deduplication and acknowledgement) followed by the opaque batch bytes. One Avro batch per
+/// deduplication and acknowledgement) followed by the opaque batch bytes. One batch per
 /// frame; the batch is never split across frames and a frame never carries more than one
 /// independently committable batch.
 /// </summary>

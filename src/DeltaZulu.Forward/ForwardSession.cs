@@ -105,7 +105,8 @@ public sealed class ForwardSession : IAsyncDisposable
             SessionId = ack.SessionId
         };
         session._creditWindow.AdjustCapacity((int)sessionOptions.RequestedWindowSize);
-        session._dedupWindow = new ForwardDedupWindow(Math.Max(1, (int)ack.DedupWindowSize));
+        session._dedupWindow = sessionOptions.DedupWindow
+            ?? new ForwardDedupWindow(Math.Max(1, (int)ack.DedupWindowSize));
         session.IsActive = true;
         session._pumpCts = new CancellationTokenSource();
         session._pumpTask = Task.Run(() => session.RunReceiveLoopAsync(parserOptions, session._pumpCts.Token), session._pumpCts.Token);

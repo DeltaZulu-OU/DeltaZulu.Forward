@@ -62,8 +62,9 @@ transport beneath the framing, not woven into the protocol's own handshake.
   handshake and lifecycle frames.
 - Explicit backpressure signaling via `Control` window-adjustment or
   throttle frames.
-- A bounded, session-spanning dedup window keyed on a per-batch UUID, so
-  at-least-once redelivery does not double-process a batch.
+- A bounded dedup window keyed on a per-batch UUID. A collector can share the
+  window across reconnects; durable ingest still needs its own idempotency
+  guarantee across collector restarts.
 
 ## Frame types
 
@@ -132,7 +133,7 @@ var session = new ForwardSession(connection, new ForwardSessionOptions {
     DedupWindowSize = 4096
 });
 await session.OpenAsync();
-await session.SendTypedBatchAsync(avroEncodedBatchBytes);
+await session.SendTypedBatchAsync(messagePackEncodedBatchBytes);
 await session.CloseAsync();
 ```
 
@@ -171,9 +172,13 @@ var session = await ForwardSession.AcceptAsync(
     });
 ```
 
-Inbound batches are deduplicated by UUID against a bounded,
-session-spanning window before `BatchHandler` runs, so at-least-once
-redelivery after a lost acknowledgement does not double-process a batch.
+Inbound batches are deduplicated by UUID against a bounded window before
+`BatchHandler` runs. To retain that window across reconnects, create one
+`ForwardDedupWindow` in the collector and assign the same instance to
+`ForwardSessionOptions.DedupWindow` for every accepted session. The default is
+session-local. Because this window is in memory, the durable ingest layer must
+also enforce idempotency by batch UUID across collector restarts and across
+eviction from the bounded window.
 
 ## Microsoft.Extensions.Logging sink
 

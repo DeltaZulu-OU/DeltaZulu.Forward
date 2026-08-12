@@ -1,11 +1,12 @@
 namespace DeltaZulu.Forward;
 
 /// <summary>
-/// A bounded, session-spanning set of recently seen batch UUIDs. At-least-once delivery makes
+/// A bounded set of recently seen batch UUIDs that can span sessions when the collector shares
+/// the same instance between them. At-least-once delivery makes
 /// duplicate batches guaranteed rather than incidental, and per ADR-7 the receiving side (the
 /// collector) is responsible for deduplicating before decode; this window is the mechanism.
-/// It is not tied to any single <see cref="ForwardSession" /> so a fresh session after a
-/// reconnect still rejects duplicates from the previous one.
+/// The window is not tied to a <see cref="ForwardSession" /> and therefore can be reused by
+/// fresh sessions after reconnect.
 /// </summary>
 public sealed class ForwardDedupWindow
 {

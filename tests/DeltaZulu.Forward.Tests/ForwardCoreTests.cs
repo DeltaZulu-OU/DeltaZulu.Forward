@@ -534,6 +534,63 @@ public sealed class ForwardCoreTests
     }
 
     [TestMethod]
+    public async Task SharedDedupWindowSkipsRedeliveryAfterReconnect()
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var batchId = Guid.NewGuid();
+        var handlerInvocations = 0;
+        var sharedDedupWindow = new ForwardDedupWindow(16);
+        var options = new ForwardSessionOptions {
+            DedupWindow = sharedDedupWindow,
+            BatchHandler = (_, _, _, _) => {
+                Interlocked.Increment(ref handlerInvocations);
+                return Task.FromResult(new ForwardAckOutcome(0, null));
+            }
+        };
+
+        var acceptTask = Task.Run(async () => {
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                using var client = await listener.AcceptTcpClientAsync(timeout.Token);
+                await using var serverConnection = ForwardConnection.FromAcceptedClient(client);
+                var serverSession = await ForwardSession.AcceptAsync(
+                    serverConnection,
+                    offer => new ForwardHandshakeAck(true, offer.ProtocolVersion, Guid.NewGuid(), offer.RequestedWindowSize, offer.DedupWindowSize, offer.CompressionOffered, [], string.Empty),
+                    options,
+                    timeout.Token);
+                await (serverSession.ReceiveLoopCompletion ?? Task.CompletedTask);
+            }
+        }, timeout.Token);
+
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            await using var connection = new ForwardConnection(IPAddress.Loopback.ToString(), port);
+            await connection.ConnectAsync(timeout.Token);
+            var offer = new ForwardHandshakeOffer(ForwardFrameHeader.CurrentProtocolVersion, Guid.Empty, "test-catalog", 4, 16, ForwardCompression.None, []);
+            await connection.WriteFrameAsync(ForwardFrameTx.FromPayload(ForwardFrameType.Hello, offer.Encode()), 1, timeout.Token);
+            Assert.AreEqual(ForwardFrameType.HelloAck, (await connection.ReadFrameAsync(ForwardParserOptions.Default, timeout.Token)).FrameType);
+
+            var payload = new ForwardBatchEnvelope(batchId, [1, 2, 3]).Encode();
+            await connection.WriteFrameAsync(ForwardFrameTx.FromPayload(ForwardFrameType.TypedBatch, payload), 2, timeout.Token);
+            var outcome = ForwardAckCodec.Decode((await connection.ReadFrameAsync(ForwardParserOptions.Default, timeout.Token)).Payload);
+            Assert.IsTrue(outcome.Committed);
+            if (attempt == 1)
+            {
+                Assert.Contains("duplicate", outcome.Detail!);
+            }
+
+            await connection.WriteFrameAsync(ForwardFrameTx.FromFrameType(ForwardFrameType.Close), 3, timeout.Token);
+            Assert.AreEqual(ForwardFrameType.CloseAck, (await connection.ReadFrameAsync(ForwardParserOptions.Default, timeout.Token)).FrameType);
+        }
+
+        await acceptTask;
+        Assert.AreEqual(1, handlerInvocations);
+    }
+
+    [TestMethod]
     public async Task SessionOpenAsyncThrowsWhenHandshakeIsRejected()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

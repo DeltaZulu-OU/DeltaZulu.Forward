@@ -12,6 +12,13 @@ public sealed class ForwardSessionOptions
     /// <summary>Gets or sets the dedup-window size (in batch count) offered during the handshake.</summary>
     public uint DedupWindowSize { get; set; } = 4096;
 
+    /// <summary>
+    /// Gets or sets a collector-owned deduplication window that may be shared by successive
+    /// sessions. When omitted, each session creates its own in-memory window and reconnects
+    /// are not deduplicated by the transport layer.
+    /// </summary>
+    public ForwardDedupWindow? DedupWindow { get; set; }
+
     /// <summary>Gets or sets the schema fingerprints this endpoint already has schema bytes for.</summary>
     public IReadOnlyList<ulong> KnownSchemaFingerprints { get; set; } = [];
 
