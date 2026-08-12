@@ -414,11 +414,24 @@ public sealed class ForwardSession : IAsyncDisposable
         }
         else if (_options.BatchHandler is { } handler)
         {
-            outcome = await handler(frame.FrameType, envelope.BatchId, envelope.Payload, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                outcome = await handler(frame.FrameType, envelope.BatchId, envelope.Payload, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                _dedupWindow?.Remove(envelope.BatchId);
+                throw;
+            }
         }
         else
         {
             outcome = new ForwardAckOutcome(2, "no batch handler configured");
+        }
+
+        if (admitted && !outcome.Committed)
+        {
+            _dedupWindow?.Remove(envelope.BatchId);
         }
 
         await _connection.WriteFrameAsync(

@@ -591,6 +591,18 @@ public sealed class ForwardCoreTests
     }
 
     [TestMethod]
+    public void DedupWindowAllowsRetryWhenBatchWasNotCommitted()
+    {
+        var window = new ForwardDedupWindow(4);
+        var batchId = Guid.NewGuid();
+
+        Assert.IsTrue(window.TryAdmit(batchId));
+        window.Remove(batchId);
+
+        Assert.IsTrue(window.TryAdmit(batchId));
+    }
+
+    [TestMethod]
     public async Task SessionOpenAsyncThrowsWhenHandshakeIsRejected()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));

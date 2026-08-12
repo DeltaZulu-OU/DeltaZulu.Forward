@@ -32,10 +32,10 @@ the batch UUID.
 
 ## Production framework gate
 
-The package currently targets experimental `net10.0`. Production adoption by
-DeltaZulu.Agent is blocked until the maintainers explicitly decide whether to
-multi-target a long-term-support framework and validate the selected deployment
-runtime.
+The package currently targets `net10.0`. Production adoption by
+DeltaZulu.Agent requires the maintainers to validate that deployment runtime
+and explicitly decide whether the package also needs to multi-target another
+framework.
 
 ## Constraint: no fallback wire format
 

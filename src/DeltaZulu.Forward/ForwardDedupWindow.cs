@@ -75,4 +75,28 @@ public sealed class ForwardDedupWindow
             return true;
         }
     }
+
+    /// <summary>
+    /// Removes a previously admitted batch identifier when processing did not reach durable
+    /// commit, allowing a later delivery to retry it.
+    /// </summary>
+    internal void Remove(Guid batchId)
+    {
+        lock (_gate)
+        {
+            if (!_seen.Remove(batchId))
+            {
+                return;
+            }
+
+            // Removal after a failed commit is uncommon, so rebuilding the bounded FIFO is
+            // preferable to carrying another index solely for this path.
+            var retained = _order.Where(id => id != batchId).ToArray();
+            _order.Clear();
+            foreach (var id in retained)
+            {
+                _order.Enqueue(id);
+            }
+        }
+    }
 }
