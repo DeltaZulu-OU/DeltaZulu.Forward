@@ -177,26 +177,64 @@ internal sealed class ForwardObjectFormatter : IMessagePackFormatter<object?>
 
     private IReadOnlyDictionary<string, object?> DeserializeMap(ref MessagePackReader reader, MessagePackSerializerOptions options)
     {
-        var count = reader.ReadMapHeader();
-        var map = new Dictionary<string, object?>(count, StringComparer.Ordinal);
-        for (var i = 0; i < count; i++)
+        // Bounds the recursion. Without this the nesting depth of the payload is
+        // the nesting depth of the call stack, so a small crafted message with
+        // deeply nested maps overflows the stack and takes the process down.
+        options.Security.DepthStep(ref reader);
+        try
         {
-            var key = reader.ReadString()!;
-            map[key] = Deserialize(ref reader, options);
-        }
+            var count = reader.ReadMapHeader();
 
-        return map;
+            // GetEqualityComparer<T>() is the public entry point; it returns the
+            // randomly seeded hash-collision-resistant comparer precisely because
+            // ForwardMessagePackOptions selects MessagePackSecurity.UntrustedData.
+            // (GetHashCollisionResistantEqualityComparer<T>() is protected, so it is
+            // reachable only from a derived MessagePackSecurity.)
+            //
+            // Ordinal hashing here would let a sender choose keys that all collide,
+            // turning dictionary insertion from O(1) into O(n) per key and costing
+            // quadratic CPU for a single batch.
+            //
+            // The capacity is deliberately NOT taken from `count`: that value is
+            // wire-controlled, so pre-sizing lets a sender declare a huge map header
+            // and force a large allocation before a single entry has been read.
+            var map = new Dictionary<string, object?>(
+                options.Security.GetEqualityComparer<string>());
+
+            for (var i = 0; i < count; i++)
+            {
+                var key = reader.ReadString()!;
+                map[key] = Deserialize(ref reader, options);
+            }
+
+            return map;
+        }
+        finally
+        {
+            reader.Depth--;
+        }
     }
 
     private IReadOnlyList<object?> DeserializeArray(ref MessagePackReader reader, MessagePackSerializerOptions options)
     {
-        var count = reader.ReadArrayHeader();
-        var list = new List<object?>(count);
-        for (var i = 0; i < count; i++)
+        options.Security.DepthStep(ref reader);
+        try
         {
-            list.Add(Deserialize(ref reader, options));
-        }
+            var count = reader.ReadArrayHeader();
 
-        return list;
+            // Not pre-sized from `count`, for the same reason as the map above: the
+            // header is wire-controlled and the entries may not exist.
+            var list = new List<object?>();
+            for (var i = 0; i < count; i++)
+            {
+                list.Add(Deserialize(ref reader, options));
+            }
+
+            return list;
+        }
+        finally
+        {
+            reader.Depth--;
+        }
     }
 }
